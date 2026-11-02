@@ -1,0 +1,12 @@
+name: ccc-sites
+dependencies:
+  - python=3.11
+  - geopandas
+  - pandas
+  - numpy
+  - requests
+  - matplotlib
+  - folium
+  - pip
+  - pip:
+    - scikit-learn
