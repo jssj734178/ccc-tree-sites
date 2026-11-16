@@ -78,6 +78,7 @@ def dedupe(gdf, dedupe_rules):
             # True, not just the "extra" copies after the first — we want
             # to treat every row in the group equally, since none of them
             # is the "real" original here.
+            gdf[col] = gdf[col].astype(str)
             dup_mask = gdf[col].duplicated(keep=False)
 
             # dup_mask is computed once, over the whole column, before any
