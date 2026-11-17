@@ -1,3 +1,4 @@
 data/raw/*.gpkg
 data/raw/*.geojson
 __pycache__/
+data/clean/*.gpkg
