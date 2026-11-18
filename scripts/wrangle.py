@@ -51,6 +51,68 @@ def handle_nulls(gdf, null_rules):
     return gdf
 
 
+def normalize_sentinels(gdf, sentinel_rules):
+    """
+    Convert "fake nulls" — literal text that MEANS missing/not-available in
+    the source data's own convention, like the string "NA" — into real
+    nulls, as described by sentinel_rules: {column_name: sentinel_value}.
+
+    This has to run BEFORE handle_nulls(), since handle_nulls only sees
+    genuine nulls — a column containing the text "NA" looks fully populated
+    to a null-count check, even though it isn't. We found this specifically
+    in soil's `drainage` column: "NA" sat there as ordinary text, invisible
+    to our earlier null diagnostics.
+
+    sentinel_rules is expected to be a dict (possibly empty — {} for
+    sources with no hidden sentinel values).
+    """
+    for col, sentinel in sentinel_rules.items():
+        gdf[col] = gdf[col].replace(sentinel, None)
+    return gdf
+
+
+def normalize_case(gdf, case_rules):
+    """
+    Force a column's text values to one consistent case, as described by
+    case_rules: {column_name: "upper" or "lower"}.
+
+    Use this when a column has what LOOKS like duplicate categories that
+    differ only by letter case (e.g. soil_class having both "C" and "c"
+    as separate values) and that distinction isn't confirmed to carry
+    real meaning — collapsing them avoids silently treating the same
+    thing as two different categories.
+
+    case_rules is expected to be a dict (possibly empty for sources that
+    don't need this).
+    """
+    for col, case in case_rules.items():
+        if case == "upper":
+            gdf[col] = gdf[col].str.upper()
+        elif case == "lower":
+            gdf[col] = gdf[col].str.lower()
+    return gdf
+
+
+def filter_min_value(gdf, min_value_rules):
+    """
+    Drop rows whose value in a given column is at or below a threshold, as
+    described by min_value_rules: {column_name: threshold}.
+
+    Use this for junk rows that are "valid" in every technical sense (not
+    null, not an invalid geometry) but are nonsensical in practice — e.g.
+    a parcel with zero area, or a zoning polygon so small (a sliver from a
+    digitizing artifact) that it isn't a real zone. Neither of those would
+    be caught by fix_geometries() or handle_nulls(), since the row isn't
+    broken, it's just meaningless.
+
+    min_value_rules is expected to be a dict (possibly empty for sources
+    with no such threshold).
+    """
+    for col, threshold in min_value_rules.items():
+        gdf = gdf[gdf[col] > threshold]
+    return gdf
+
+
 def dedupe(gdf, dedupe_rules):
     """
     Apply a duplicate-handling policy per column, as described by
@@ -120,7 +182,12 @@ def wrangle_source(name, gdf, config):
     if config.get("fix_geometry", False):
         gdf = fix_geometries(gdf)
 
+    # Order matters: sentinel values must become real nulls BEFORE
+    # handle_nulls() runs, otherwise handle_nulls() can't see them.
+    gdf = normalize_sentinels(gdf, config.get("sentinel_rules", {}))
     gdf = handle_nulls(gdf, config.get("null_rules", {}))
+    gdf = normalize_case(gdf, config.get("case_rules", {}))
+    gdf = filter_min_value(gdf, config.get("min_value_rules", {}))
     gdf = dedupe(gdf, config.get("dedupe_on", {}))
 
     report_diagnostics(before, gdf, name)
